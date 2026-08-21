@@ -1,0 +1,40 @@
+name: Scheduled Upstream Sync for Main and Preview
+
+on:
+  schedule:
+    - cron: '0 7 * * 1,4'
+  workflow_dispatch:
+    inputs:
+      sync_dry_run:
+        description: 'Dry Run Mode (true = skip push)'
+        type: boolean
+        default: false
+
+jobs:
+  sync_branches:
+    name: Sync Main and Preview
+    runs-on: ubuntu-latest
+    # This condition handles your Dry Run logic for the entire job
+    if: ${{ github.event_name == 'schedule' || github.event.inputs.sync_dry_run != true }}
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sync Main Branch
+        uses: wei/git-sync@v3
+        with:
+          source_repo: "https://${{ secrets.UPSTREAM_PAT }}@github.com/School-of-IT-RGPV-Bhopal/website.git"
+          source_branch: "main"
+          destination_repo: "https://${{ secrets.UPSTREAM_PAT }}@github.com/Aradhya-Joshi/soit-rgpv-website.git"
+          destination_branch: "main"
+
+      - name: Sync Preview Branch
+        uses: wei/git-sync@v3
+        with:
+          source_repo: "https://${{ secrets.UPSTREAM_PAT }}@github.com/School-of-IT-RGPV-Bhopal/website.git"
+          source_branch: "preview"
+          destination_repo: "https://${{ secrets.UPSTREAM_PAT }}@github.com/Aradhya-Joshi/soit-rgpv-website.git"
+          destination_branch: "preview"
