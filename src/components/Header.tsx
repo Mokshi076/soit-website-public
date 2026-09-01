@@ -48,9 +48,14 @@ export default function Header() {
   // CHECK ACTIVE DROPDOWNS
   // ----------------------------------------
 
-  const isAcademicsActive = academicsPaths.includes(pathname);
-  const isStudentActive = studentPaths.includes(pathname);
-  const isResourcesActive = resourcesPaths.includes(pathname);
+  const isAcademicsActive =
+    academicsPaths.includes(pathname) || openDropdown === 'academics';
+
+  const isStudentActive =
+    studentPaths.includes(pathname) || openDropdown === 'student';
+
+  const isResourcesActive =
+    resourcesPaths.includes(pathname) || openDropdown === 'resources';
 
   // ----------------------------------------
   // SCROLL
@@ -73,7 +78,6 @@ export default function Header() {
   // ----------------------------------------
 
   useEffect(() => {
-    // Only observe homepage sections
     if (pathname !== '/') {
       return;
     }
@@ -141,7 +145,9 @@ export default function Header() {
   // HOME CLICK
   // ----------------------------------------
 
-  const handleHomeClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+  const handleHomeClick = (
+    e: React.MouseEvent<HTMLAnchorElement>
+  ) => {
     setActiveSection('home');
 
     if (pathname === '/') {
@@ -223,9 +229,7 @@ export default function Header() {
 
           <nav className="hidden items-center space-x-6 lg:flex">
 
-            {/* ============================
-                HOME
-            ============================= */}
+            {/* HOME */}
 
             <Link
               href="/"
@@ -244,9 +248,7 @@ export default function Header() {
               Home
             </Link>
 
-            {/* ============================
-                ABOUT
-            ============================= */}
+            {/* ABOUT */}
 
             <HashLink
               href="/#about"
@@ -275,8 +277,8 @@ export default function Header() {
               onMouseEnter={() => handleMouseEnter('academics')}
               onMouseLeave={handleMouseLeave}
             >
-              <Link
-                href="/academics"
+              <button
+                type="button"
                 className={`
                   relative
                   flex
@@ -305,7 +307,7 @@ export default function Header() {
                     d="M19 9l-7 7-7-7"
                   />
                 </svg>
-              </Link>
+              </button>
 
               {openDropdown === 'academics' && (
                 <div className="absolute left-0 top-full z-50 w-48 pt-2">
@@ -339,8 +341,8 @@ export default function Header() {
               onMouseEnter={() => handleMouseEnter('student')}
               onMouseLeave={handleMouseLeave}
             >
-              <Link
-                href="/student-life"
+              <button
+                type="button"
                 className={`
                   relative
                   flex
@@ -369,7 +371,7 @@ export default function Header() {
                     d="M19 9l-7 7-7-7"
                   />
                 </svg>
-              </Link>
+              </button>
 
               {openDropdown === 'student' && (
                 <div className="absolute left-0 top-full z-50 w-56 pt-2">
@@ -508,9 +510,7 @@ export default function Header() {
               )}
             </div>
 
-            {/* ============================
-                FAQ
-            ============================= */}
+            {/* FAQ */}
 
             <Link
               href="/faq"
@@ -528,9 +528,7 @@ export default function Header() {
               FAQ
             </Link>
 
-            {/* ============================
-                CONTACT
-            ============================= */}
+            {/* CONTACT */}
 
             <Link
               href="/contact"
