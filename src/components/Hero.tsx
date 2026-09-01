@@ -8,6 +8,7 @@ export default function Hero() {
 
   return (
     <section
+    id="home"
       className="flex items-center justify-center overflow-hidden pt-10"
       data-tour="home-hero-section"
     >
