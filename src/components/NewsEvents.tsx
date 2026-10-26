@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import Image from "next/image";
 import { Calendar } from "lucide-react";
 import { newsItems } from "@/data/news_and_events/news";
@@ -12,6 +12,42 @@ export default function NewsEvents() {
   const handleTabChange = useCallback((tab: string) => {
     setActiveTab(tab);
   }, []);
+
+  // Deep link to a single news card (e.g. from the header ticker): switch to the
+  // news tab, scroll the card into view and outline it for a few seconds.
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const focusNews = useCallback((id: string) => {
+    setActiveTab("news");
+    window.requestAnimationFrame(() => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      setHighlightId(id);
+      if (highlightTimer.current) clearTimeout(highlightTimer.current);
+      highlightTimer.current = setTimeout(() => setHighlightId(null), 3500);
+    });
+  }, []);
+
+  useEffect(() => {
+    const focusFromHash = () => {
+      const id = window.location.hash.slice(1);
+      if (id.startsWith("news-")) focusNews(id);
+    };
+    const onFocusEvent = (e: Event) => focusNews((e as CustomEvent<string>).detail);
+
+    // Small delay so we run after the router has finished the page navigation.
+    const initial = window.setTimeout(focusFromHash, 150);
+    window.addEventListener("hashchange", focusFromHash);
+    window.addEventListener("soit:focus-news", onFocusEvent);
+    return () => {
+      window.clearTimeout(initial);
+      if (highlightTimer.current) clearTimeout(highlightTimer.current);
+      window.removeEventListener("hashchange", focusFromHash);
+      window.removeEventListener("soit:focus-news", onFocusEvent);
+    };
+  }, [focusNews]);
 
   return (
     <section id="news-events" className="section-container mt-5 bg-white">
@@ -94,11 +130,13 @@ export default function NewsEvents() {
               {newsItems.map((item) => (
                 <div
                   key={item.id}
-                  className="
-                    overflow-hidden rounded-lg bg-white shadow-md
+                  id={`news-${item.id}`}
+                  className={`
+                    scroll-mt-28 overflow-hidden rounded-lg bg-white shadow-md
                     transition-shadow duration-300
                     hover:shadow-lg
-                  "
+                    ${highlightId === `news-${item.id}` ? "ring-2 ring-accent ring-offset-2" : ""}
+                  `}
                 >
                   <div className="relative h-48 overflow-hidden bg-gray-200">
                     <Image

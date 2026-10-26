@@ -148,6 +148,44 @@
   border-left-color: var(--sidebar-active);
 }
 
+/* Main navbar underline: grows from center outward, never affects layout */
+@utility nav-link {
+  position: relative;
+
+  &::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -6px;
+    height: 2px;
+    background-color: var(--color-primary);
+    transform: scaleX(0);
+    transform-origin: center;
+    transition: transform 0.25s ease-out;
+    pointer-events: none;
+  }
+
+  &:hover::after,
+  &:focus-visible::after {
+    transform: scaleX(1);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    &::after {
+      transition: none;
+    }
+  }
+}
+
+@utility nav-link-active {
+  color: var(--color-primary);
+
+  &::after {
+    transform: scaleX(1);
+  }
+}
+
 @utility content-block {
   @apply p-6 md:p-8 rounded-lg;
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);

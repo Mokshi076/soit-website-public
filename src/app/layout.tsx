@@ -9,6 +9,7 @@ import {
 import "./globals.css";
 import Header from "@components/Header";
 import Footer from "@components/Footer";
+import NewsTicker from "@components/NewsTicker";
 import SiteUsageNotice from "@components/SiteUsageNotice";
 import SplashScreen from "@components/SplashScreen";
 import ChatWidget from "@components/faq/ChatWidget";
@@ -374,11 +375,13 @@ export default function RootLayout({
         <SplashScreen />
         <SiteUsageNotice />
         <TourProvider />
-        <div className="fixed inset-x-0 top-0 z-50 flex flex-col">
+        {/* Navbar stays pinned on scroll; the ticker scrolls away with the page, and
+            <main> starts directly under it, so no manual top padding is needed. */}
+        <div className="sticky top-0 z-50">
           <Header />
         </div>
-        {/* Add padding to account for fixed header */}
-        <main className="page-wrapper pt-20">{children}</main>
+        <NewsTicker />
+        <main className="page-wrapper">{children}</main>
         <Footer />
         <SpeedInsights />
         <Analytics />

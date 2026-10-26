@@ -1,205 +1,219 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import HashLink from '@components/HashLink';
 import { usePathname } from 'next/navigation';
+import HashLink from '@components/HashLink';
+
+/* ---------- Nav data: single source of truth for desktop + mobile ---------- */
+
+// `external` = opens in a new tab
+type NavChild = { label: string; href: string; external?: boolean };
+type NavLeaf = { key: string; label: string; href: string; hash?: string };
+type NavGroup = { key: string; label: string; width: string; children: NavChild[] };
+type NavItem = NavLeaf | NavGroup;
+
+const NAV: NavItem[] = [
+  { key: 'home', label: 'Home', href: '/' },
+  { key: 'about', label: 'About', href: '/#about', hash: 'about' },
+  {
+    key: 'academics',
+    label: 'Academics',
+    width: 'w-48',
+    children: [
+      { label: 'Programs & Courses', href: '/academics' },
+      { label: 'Placements', href: '/placements' },
+    ],
+  },
+  {
+    key: 'student',
+    label: 'Student Hub',
+    width: 'w-56',
+    children: [
+      { label: 'Student Life', href: '/student-life' },
+      { label: 'Achievements', href: '/student-achievements' },
+      { label: 'Alumni Network', href: '/alumni-network' },
+      { label: 'Campus Amenities', href: '/amenities' },
+      { label: 'Virtual Tour', href: '/virtual-tour' },
+    ],
+  },
+  {
+    key: 'resources',
+    label: 'Resources',
+    width: 'w-52',
+    children: [
+      { label: 'Gallery', href: '/gallery' },
+      { label: 'News & Events', href: '/news-events' },
+      { label: 'MOU & Partnerships', href: '/mou' },
+      { label: 'Analytics', href: '/analytics' },
+      { label: 'Calendars', href: '/calendars' },
+      { label: '📖 Magazine', href: '/work-in-progress', external: true },
+    ],
+  },
+  { key: 'faq', label: 'FAQ', href: '/faq' },
+  { key: 'contact', label: 'Contact', href: '/contact' },
+];
+
+const isGroup = (item: NavItem): item is NavGroup => 'children' in item;
+
+// Active key for every page except the homepage (the homepage uses the scroll-spy below).
+// Derived from NAV, so adding a page to the menu automatically makes it "active-aware".
+function getActiveKey(pathname: string): string {
+  for (const item of NAV) {
+    if (isGroup(item)) {
+      if (item.children.some((c) => c.href === pathname)) return item.key;
+    } else if (!item.hash && item.href === pathname) {
+      return item.key;
+    }
+  }
+  return '';
+}
+
+const STUDENT_PORTAL = 'https://www.rgpv.ac.in/Login/StudentLogin.aspx';
+
+/* ---------- Component ---------- */
 
 export default function Header() {
   const pathname = usePathname();
 
-  const [scrollY, setScrollY] = useState(0);
+  const [scrolled, setScrolled] = useState(false);
   const [activeSection, setActiveSection] = useState('home');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [prevPath, setPrevPath] = useState(pathname);
 
-  const closeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const navRef = useRef<HTMLElement>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const scrolled = scrollY > 50;
+  // On route change: close menus and reset the active section. (Adjusting state during render is the
+  // React-recommended alternative to a setState-in-effect, and avoids a stale frame.)
+  if (pathname !== prevPath) {
+    setPrevPath(pathname);
+    setOpenKey(null);
+    setMobileMenuOpen(false);
+    // Reset the homepage active section for the new page
+    setActiveSection(
+      pathname !== '/' ? '' : window.location.hash === '#about' ? 'about' : 'home'
+    );
+  }
 
-  // ----------------------------------------
-  // PATHS FOR DROPDOWN ACTIVE STATES
-  // ----------------------------------------
+  // Homepage: Home/About follow the section in view (scroll-spy).
+  // Other pages: the active item comes from the URL.
+  const activeKey =
+    pathname === '/'
+      ? activeSection === 'home'
+        ? 'home'
+        : activeSection === 'about'
+          ? 'about'
+          : ''
+      : getActiveKey(pathname);
 
-  const academicsPaths = [
-    '/academics',
-    '/placements',
-  ];
-
-  const studentPaths = [
-    '/student-life',
-    '/student-achievements',
-    '/alumni-network',
-    '/amenities',
-    '/virtual-tour',
-  ];
-
-  const resourcesPaths = [
-    '/gallery',
-    '/news-events',
-    '/mou',
-    '/analytics',
-    '/calendars',
-    '/work-in-progress',
-  ];
-
-  // ----------------------------------------
-  // CHECK ACTIVE DROPDOWNS
-  // ----------------------------------------
-
-  const isAcademicsActive =
-    academicsPaths.includes(pathname) || openDropdown === 'academics';
-
-  const isStudentActive =
-    studentPaths.includes(pathname) || openDropdown === 'student';
-
-  const isResourcesActive =
-    resourcesPaths.includes(pathname) || openDropdown === 'resources';
-
-  // ----------------------------------------
-  // SCROLL
-  // ----------------------------------------
-
+  // setState bails out when the value is unchanged, so this re-renders only when
+  // the 50px threshold is crossed, not on every scroll event.
   useEffect(() => {
-    const handleScroll = () => {
-      setScrollY(window.scrollY);
-    };
-
-    window.addEventListener('scroll', handleScroll);
-
-    return () => {
-      window.removeEventListener('scroll', handleScroll);
-    };
+    const onScroll = () => setScrolled(window.scrollY > 50);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // ----------------------------------------
-  // HOMEPAGE SECTION OBSERVER
-  // ----------------------------------------
-
+  // Homepage section observer (scroll-spy)
   useEffect(() => {
-    if (pathname !== '/') {
-      return;
-    }
+    if (pathname !== '/') return;
 
     const sections = document.querySelectorAll('section[id]');
-
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setActiveSection(entry.target.id);
-          }
+          if (entry.isIntersecting) setActiveSection(entry.target.id);
         });
       },
-      {
-        rootMargin: '-100px 0px -60% 0px',
-        threshold: 0.1,
-      }
+      { rootMargin: '-100px 0px -60% 0px', threshold: 0.1 }
     );
 
-    sections.forEach((section) => {
-      observer.observe(section);
-    });
-
-    return () => {
-      observer.disconnect();
-    };
+    sections.forEach((section) => observer.observe(section));
+    return () => observer.disconnect();
   }, [pathname]);
 
-  // ----------------------------------------
-  // RESET HOMEPAGE ACTIVE SECTION
-  // WHEN NAVIGATING TO OTHER PAGES
-  // ----------------------------------------
-
+  // Close dropdown on outside click / Escape.
   useEffect(() => {
-    if (pathname !== '/') {
-      setActiveSection('');
-    } else if (window.location.hash === '#about') {
-      setActiveSection('about');
-    } else {
-      setActiveSection('home');
-    }
-  }, [pathname]);
+    if (!openKey) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (navRef.current && !navRef.current.contains(e.target as Node)) setOpenKey(null);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpenKey(null);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [openKey]);
 
-  // ----------------------------------------
-  // DROPDOWN HANDLERS
-  // ----------------------------------------
+  useEffect(
+    () => () => {
+      if (closeTimer.current) clearTimeout(closeTimer.current);
+    },
+    []
+  );
 
-  const handleMouseEnter = (dropdown: string) => {
-    if (closeTimeout.current) {
-      clearTimeout(closeTimeout.current);
-      closeTimeout.current = null;
-    }
-
-    setOpenDropdown(dropdown);
+  const openMenu = (key: string) => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    setOpenKey(key);
+  };
+  const scheduleClose = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => setOpenKey(null), 150);
   };
 
-  const handleMouseLeave = () => {
-    closeTimeout.current = setTimeout(() => {
-      setOpenDropdown(null);
-    }, 150);
-  };
+  const closeMobile = () => setMobileMenuOpen(false);
 
-  // ----------------------------------------
-  // HOME CLICK
-  // ----------------------------------------
-
-  const handleHomeClick = (
-    e: React.MouseEvent<HTMLAnchorElement>
-  ) => {
+  // Home: on the homepage, scroll smoothly to the top instead of reloading.
+  const handleHomeClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     setActiveSection('home');
-
     if (pathname === '/') {
       e.preventDefault();
-
-      window.scrollTo({
-        top: 0,
-        behavior: 'smooth',
-      });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
-
-    setMobileMenuOpen(false);
+    closeMobile();
   };
-
-  // ----------------------------------------
-  // ABOUT CLICK
-  // ----------------------------------------
 
   const handleAboutClick = () => {
     setActiveSection('about');
-    setMobileMenuOpen(false);
+    closeMobile();
   };
 
-  // ----------------------------------------
-  // CLOSE MOBILE MENU
-  // ----------------------------------------
+  // `nav-link` owns the underline (absolutely positioned, animated via transform
+  // only, so it never shifts layout); `nav-link-active` keeps it visible.
+  // A dropdown also counts as active while it is open.
+  const navLinkClass = (active: boolean, extra = '') =>
+    `nav-link font-medium transition-colors hover:text-primary ${
+      active ? 'nav-link-active font-semibold' : 'text-gray-700'
+    } ${extra}`.trim();
 
-  const closeMobileMenu = () => {
-    setMobileMenuOpen(false);
-  };
+  const mobileLinkClass = (active: boolean, extra: string) =>
+    `block py-2 hover:text-primary ${
+      active ? 'font-semibold text-primary' : 'text-gray-700'
+    } ${extra}`;
 
   return (
     <header
       className={`
-        w-full
-        bg-white
-        transition-all
+        border-secondary w-full border-b-[3px] bg-white py-2 transition-shadow
         duration-300
         ${scrolled ? 'shadow-md' : ''}
       `}
     >
-      {/* ================================
-          HEADER CONTAINER
-      ================================= */}
-
-      <div className="mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="
+        mx-auto px-4
+        sm:px-6
+        lg:px-8
+      ">
         <div className="flex items-center justify-between">
-
-          {/* ================================
-              LOGO
-          ================================= */}
-
+          {/* Logo and Site Name */}
           <div className="flex items-center">
             <div className="relative size-12">
               <Image
@@ -211,350 +225,115 @@ export default function Header() {
                 className="rounded-full object-contain"
               />
             </div>
-
             <div className="ml-3">
-              <p className="font-poppins text-xl font-bold text-primary">
-                SoIT
-              </p>
-
-              <p className="text-xs text-gray-600">
-                School of Information Technology
-              </p>
+              <p className="font-poppins text-primary text-xl font-bold">SoIT</p>
+              <p className="text-xs text-gray-600">School of Information Technology</p>
             </div>
           </div>
 
-          {/* ================================
-              DESKTOP NAVIGATION
-          ================================= */}
+          {/* Desktop Navigation */}
+          <nav ref={navRef} aria-label="Main" className="
+            hidden items-center space-x-6
+            lg:flex
+          ">
+            {NAV.map((item) => {
+              if (!isGroup(item)) {
+                return item.hash ? (
+                  <HashLink
+                    key={item.key}
+                    href={item.href}
+                    hash={item.hash}
+                    className={navLinkClass(activeKey === item.key)}
+                    onClick={handleAboutClick}
+                  >
+                    {item.label}
+                  </HashLink>
+                ) : (
+                  <Link
+                    key={item.key}
+                    href={item.href}
+                    className={navLinkClass(activeKey === item.key)}
+                    onClick={item.key === 'home' ? handleHomeClick : undefined}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              }
 
-          <nav className="hidden items-center space-x-6 lg:flex">
-
-            {/* HOME */}
-
-            <Link
-              href="/"
-              onClick={handleHomeClick}
-              className={`
-                relative
-                font-medium
-                transition-colors
-                ${
-                  pathname === '/' && activeSection === 'home'
-                    ? 'font-semibold text-primary after:absolute after:-bottom-2 after:left-0 after:h-0.5 after:w-full after:rounded-full after:bg-primary'
-                    : 'text-gray-700 hover:text-primary'
-                }
-              `}
-            >
-              Home
-            </Link>
-
-            {/* ABOUT */}
-
-            <HashLink
-              href="/#about"
-              hash="about"
-              onClick={handleAboutClick}
-              className={`
-                relative
-                font-medium
-                transition-colors
-                ${
-                  pathname === '/' && activeSection === 'about'
-                    ? 'font-semibold text-primary after:absolute after:-bottom-2 after:left-0 after:h-0.5 after:w-full after:rounded-full after:bg-primary'
-                    : 'text-gray-700 hover:text-primary'
-                }
-              `}
-            >
-              About
-            </HashLink>
-
-            {/* ============================
-                ACADEMICS
-            ============================= */}
-
-            <div
-              className="relative"
-              onMouseEnter={() => handleMouseEnter('academics')}
-              onMouseLeave={handleMouseLeave}
-            >
-              <button
-                type="button"
-                className={`
-                  relative
-                  flex
-                  items-center
-                  font-medium
-                  transition-colors
-                  ${
-                    isAcademicsActive
-                      ? 'font-semibold text-primary after:absolute after:-bottom-2 after:left-0 after:h-0.5 after:w-full after:rounded-full after:bg-primary'
-                      : 'text-gray-700 hover:text-primary'
-                  }
-                `}
-              >
-                Academics
-
-                <svg
-                  className="ml-1 size-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
+              const isOpen = openKey === item.key;
+              return (
+                <div
+                  key={item.key}
+                  className="relative"
+                  onMouseEnter={() => openMenu(item.key)}
+                  onMouseLeave={scheduleClose}
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
-              </button>
-
-              {openDropdown === 'academics' && (
-                <div className="absolute left-0 top-full z-50 w-48 pt-2">
-                  <div className="rounded-lg border border-gray-100 bg-white py-2 shadow-xl">
-
-                    <Link
-                      href="/academics"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-primary"
+                  <button
+                    type="button"
+                    className={navLinkClass(activeKey === item.key || isOpen, 'flex items-center')}
+                    aria-expanded={isOpen}
+                    onClick={() => openMenu(item.key)}
+                  >
+                    {item.label}
+                    <svg
+                      className={`
+                        ml-1 size-4 transition-transform duration-200
+                        ${
+                        isOpen ? 'rotate-180' : ''
+                      }
+                      `}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      aria-hidden="true"
                     >
-                      Programs & Courses
-                    </Link>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
 
-                    <Link
-                      href="/placements"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-primary"
-                    >
-                      Placements
-                    </Link>
-
-                  </div>
+                  {isOpen && (
+                    <div className={`
+                      absolute top-full left-0 z-50 pt-2
+                      ${item.width}
+                    `}>
+                      <div className="
+                        rounded-lg border border-gray-100 bg-white py-2
+                        shadow-xl
+                      ">
+                        {item.children.map((child) => (
+                          <Link
+                            key={child.href}
+                            href={child.href}
+                            {...(child.external ? { target: '_blank' } : {})}
+                            className={`
+                              hover:text-primary
+                              block px-4 py-2 text-sm
+                              hover:bg-gray-50
+                              ${
+                              pathname === child.href
+                                ? 'text-primary bg-gray-50 font-medium'
+                                : 'text-gray-700'
+                            }
+                            `}
+                          >
+                            {child.label}
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-
-            {/* ============================
-                STUDENT HUB
-            ============================= */}
-
-            <div
-              className="relative"
-              onMouseEnter={() => handleMouseEnter('student')}
-              onMouseLeave={handleMouseLeave}
-            >
-              <button
-                type="button"
-                className={`
-                  relative
-                  flex
-                  items-center
-                  font-medium
-                  transition-colors
-                  ${
-                    isStudentActive
-                      ? 'font-semibold text-primary after:absolute after:-bottom-2 after:left-0 after:h-0.5 after:w-full after:rounded-full after:bg-primary'
-                      : 'text-gray-700 hover:text-primary'
-                  }
-                `}
-              >
-                Student Hub
-
-                <svg
-                  className="ml-1 size-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
-              </button>
-
-              {openDropdown === 'student' && (
-                <div className="absolute left-0 top-full z-50 w-56 pt-2">
-                  <div className="rounded-lg border border-gray-100 bg-white py-2 shadow-xl">
-
-                    <Link
-                      href="/student-life"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-primary"
-                    >
-                      Student Life
-                    </Link>
-
-                    <Link
-                      href="/student-achievements"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-primary"
-                    >
-                      Achievements
-                    </Link>
-
-                    <Link
-                      href="/alumni-network"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-primary"
-                    >
-                      Alumni Network
-                    </Link>
-
-                    <Link
-                      href="/amenities"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-primary"
-                    >
-                      Campus Amenities
-                    </Link>
-
-                    <Link
-                      href="/virtual-tour"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-primary"
-                    >
-                      Virtual Tour
-                    </Link>
-
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* ============================
-                RESOURCES
-            ============================= */}
-
-            <div
-              className="relative"
-              onMouseEnter={() => handleMouseEnter('resources')}
-              onMouseLeave={handleMouseLeave}
-            >
-              <button
-                type="button"
-                className={`
-                  relative
-                  flex
-                  items-center
-                  font-medium
-                  transition-colors
-                  ${
-                    isResourcesActive
-                      ? 'font-semibold text-primary after:absolute after:-bottom-2 after:left-0 after:h-0.5 after:w-full after:rounded-full after:bg-primary'
-                      : 'text-gray-700 hover:text-primary'
-                  }
-                `}
-              >
-                Resources
-
-                <svg
-                  className="ml-1 size-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
-              </button>
-
-              {openDropdown === 'resources' && (
-                <div className="absolute left-0 top-full z-50 w-52 pt-2">
-                  <div className="rounded-lg border border-gray-100 bg-white py-2 shadow-xl">
-
-                    <Link
-                      href="/gallery"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-primary"
-                    >
-                      Gallery
-                    </Link>
-
-                    <Link
-                      href="/news-events"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-primary"
-                    >
-                      News & Events
-                    </Link>
-
-                    <Link
-                      href="/mou"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-primary"
-                    >
-                      MOU & Partnerships
-                    </Link>
-
-                    <Link
-                      href="/analytics"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-primary"
-                    >
-                      Analytics
-                    </Link>
-
-                    <Link
-                      href="/calendars"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-primary"
-                    >
-                      Calendars
-                    </Link>
-
-                    <Link
-                      href="/work-in-progress"
-                      target="_blank"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-primary"
-                    >
-                      📖 Magazine
-                    </Link>
-
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* FAQ */}
-
-            <Link
-              href="/faq"
-              className={`
-                relative
-                font-medium
-                transition-colors
-                ${
-                  pathname === '/faq'
-                    ? 'font-semibold text-primary after:absolute after:-bottom-2 after:left-0 after:h-0.5 after:w-full after:rounded-full after:bg-primary'
-                    : 'text-gray-700 hover:text-primary'
-                }
-              `}
-            >
-              FAQ
-            </Link>
-
-            {/* CONTACT */}
-
-            <Link
-              href="/contact"
-              className={`
-                relative
-                font-medium
-                transition-colors
-                ${
-                  pathname === '/contact'
-                    ? 'font-semibold text-primary after:absolute after:-bottom-2 after:left-0 after:h-0.5 after:w-full after:rounded-full after:bg-primary'
-                    : 'text-gray-700 hover:text-primary'
-                }
-              `}
-            >
-              Contact
-            </Link>
-
+              );
+            })}
           </nav>
 
-          {/* ================================
-              STUDENT PORTAL
-          ================================= */}
-
-          <div className="hidden items-center md:flex">
+          {/* Student Portal */}
+          <div className="
+            hidden items-center
+            md:flex
+          ">
             <Link
-              href="https://www.rgpv.ac.in/Login/StudentLogin.aspx"
+              href={STUDENT_PORTAL}
               target="_blank"
               rel="noopener noreferrer"
               className="btn-primary px-4 py-2 text-sm"
@@ -563,49 +342,35 @@ export default function Header() {
             </Link>
           </div>
 
-          {/* ================================
-              MOBILE MENU BUTTON
-          ================================= */}
-
+          {/* Mobile Menu Button */}
           <button
             type="button"
-            className="text-gray-700 focus:outline-none lg:hidden"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="
+              text-gray-700
+              focus:outline-none
+              lg:hidden
+            "
+            onClick={() => setMobileMenuOpen((v) => !v)}
             aria-label="Toggle mobile menu"
             aria-expanded={mobileMenuOpen}
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="size-6"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
+            <svg xmlns="http://www.w3.org/2000/svg" className="size-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={2}
-                d={
-                  mobileMenuOpen
-                    ? 'M6 18L18 6M6 6l12 12'
-                    : 'M4 6h16M4 12h16M4 18h16'
-                }
+                d={mobileMenuOpen ? 'M6 18L18 6M6 6l12 12' : 'M4 6h16M4 12h16M4 18h16'}
               />
             </svg>
           </button>
-
         </div>
       </div>
 
-      {/* ================================
-          MOBILE MENU
-      ================================= */}
-
+      {/* Mobile Menu (inert while closed so hidden links can't be tabbed to) */}
       <div
+        inert={!mobileMenuOpen}
         className={`
-          overflow-hidden
-          transition-all
-          duration-300
+          overflow-hidden transition-all duration-300
           lg:hidden
           ${
             mobileMenuOpen
@@ -615,349 +380,64 @@ export default function Header() {
         `}
       >
         <div className="space-y-1 px-4 py-2 pb-4">
+          {NAV.map((item) =>
+            isGroup(item) ? (
+              <div key={item.key} className="mt-2 border-t border-gray-100 pt-2">
+                <p
+                  className={`
+                    px-2 text-xs font-semibold uppercase
+                    ${
+                    activeKey === item.key ? 'text-primary' : 'text-gray-500'
+                  }
+                  `}
+                >
+                  {item.label}
+                </p>
+                {item.children.map((child) => (
+                  <Link
+                    key={child.href}
+                    href={child.href}
+                    {...(child.external ? { target: '_blank' } : {})}
+                    className={mobileLinkClass(pathname === child.href, 'pl-4')}
+                    onClick={closeMobile}
+                  >
+                    {child.label}
+                  </Link>
+                ))}
+              </div>
+            ) : item.hash ? (
+              <HashLink
+                key={item.key}
+                href={item.href}
+                hash={item.hash}
+                className={mobileLinkClass(activeKey === item.key, 'font-medium')}
+                onClick={handleAboutClick}
+              >
+                {item.label}
+              </HashLink>
+            ) : (
+              <Link
+                key={item.key}
+                href={item.href}
+                className={mobileLinkClass(activeKey === item.key, 'font-medium')}
+                onClick={item.key === 'home' ? handleHomeClick : closeMobile}
+              >
+                {item.label}
+              </Link>
+            )
+          )}
 
-          {/* HOME */}
-
-          <Link
-            href="/"
-            className={`
-              block py-2 font-medium
-              ${
-                pathname === '/' && activeSection === 'home'
-                  ? 'font-semibold text-primary'
-                  : 'text-gray-700 hover:text-primary'
-              }
-            `}
-            onClick={handleHomeClick}
-          >
-            Home
-          </Link>
-
-          {/* ABOUT */}
-
-          <HashLink
-            href="/#about"
-            hash="about"
-            className={`
-              block py-2 font-medium
-              ${
-                pathname === '/' && activeSection === 'about'
-                  ? 'font-semibold text-primary'
-                  : 'text-gray-700 hover:text-primary'
-              }
-            `}
-            onClick={handleAboutClick}
-          >
-            About
-          </HashLink>
-
-          {/* ============================
-              ACADEMICS
-          ============================= */}
-
-          <div className="mt-2 border-t border-gray-100 pt-2">
-
-            <p
-              className={`
-                px-2 text-xs font-semibold uppercase
-                ${
-                  isAcademicsActive
-                    ? 'text-primary'
-                    : 'text-gray-500'
-                }
-              `}
-            >
-              Academics
-            </p>
-
+          <div className="pt-4 pb-2">
             <Link
-              href="/academics"
-              className={`
-                block py-2 pl-4
-                ${
-                  pathname === '/academics'
-                    ? 'font-semibold text-primary'
-                    : 'text-gray-700 hover:text-primary'
-                }
-              `}
-              onClick={closeMobileMenu}
-            >
-              Programs & Courses
-            </Link>
-
-            <Link
-              href="/placements"
-              className={`
-                block py-2 pl-4
-                ${
-                  pathname === '/placements'
-                    ? 'font-semibold text-primary'
-                    : 'text-gray-700 hover:text-primary'
-                }
-              `}
-              onClick={closeMobileMenu}
-            >
-              Placements
-            </Link>
-
-          </div>
-
-          {/* ============================
-              STUDENT HUB
-          ============================= */}
-
-          <div className="mt-2 border-t border-gray-100 pt-2">
-
-            <p
-              className={`
-                px-2 text-xs font-semibold uppercase
-                ${
-                  isStudentActive
-                    ? 'text-primary'
-                    : 'text-gray-500'
-                }
-              `}
-            >
-              Student Hub
-            </p>
-
-            <Link
-              href="/student-life"
-              className={`
-                block py-2 pl-4
-                ${
-                  pathname === '/student-life'
-                    ? 'font-semibold text-primary'
-                    : 'text-gray-700 hover:text-primary'
-                }
-              `}
-              onClick={closeMobileMenu}
-            >
-              Student Life
-            </Link>
-
-            <Link
-              href="/student-achievements"
-              className={`
-                block py-2 pl-4
-                ${
-                  pathname === '/student-achievements'
-                    ? 'font-semibold text-primary'
-                    : 'text-gray-700 hover:text-primary'
-                }
-              `}
-              onClick={closeMobileMenu}
-            >
-              Achievements
-            </Link>
-
-            <Link
-              href="/alumni-network"
-              className={`
-                block py-2 pl-4
-                ${
-                  pathname === '/alumni-network'
-                    ? 'font-semibold text-primary'
-                    : 'text-gray-700 hover:text-primary'
-                }
-              `}
-              onClick={closeMobileMenu}
-            >
-              Alumni Network
-            </Link>
-
-            <Link
-              href="/amenities"
-              className={`
-                block py-2 pl-4
-                ${
-                  pathname === '/amenities'
-                    ? 'font-semibold text-primary'
-                    : 'text-gray-700 hover:text-primary'
-                }
-              `}
-              onClick={closeMobileMenu}
-            >
-              Campus Amenities
-            </Link>
-
-            <Link
-              href="/virtual-tour"
-              className={`
-                block py-2 pl-4
-                ${
-                  pathname === '/virtual-tour'
-                    ? 'font-semibold text-primary'
-                    : 'text-gray-700 hover:text-primary'
-                }
-              `}
-              onClick={closeMobileMenu}
-            >
-              Virtual Tour
-            </Link>
-
-          </div>
-
-          {/* ============================
-              RESOURCES
-          ============================= */}
-
-          <div className="mt-2 border-t border-gray-100 pt-2">
-
-            <p
-              className={`
-                px-2 text-xs font-semibold uppercase
-                ${
-                  isResourcesActive
-                    ? 'text-primary'
-                    : 'text-gray-500'
-                }
-              `}
-            >
-              Resources
-            </p>
-
-            <Link
-              href="/gallery"
-              className={`
-                block py-2 pl-4
-                ${
-                  pathname === '/gallery'
-                    ? 'font-semibold text-primary'
-                    : 'text-gray-700 hover:text-primary'
-                }
-              `}
-              onClick={closeMobileMenu}
-            >
-              Gallery
-            </Link>
-
-            <Link
-              href="/news-events"
-              className={`
-                block py-2 pl-4
-                ${
-                  pathname === '/news-events'
-                    ? 'font-semibold text-primary'
-                    : 'text-gray-700 hover:text-primary'
-                }
-              `}
-              onClick={closeMobileMenu}
-            >
-              News & Events
-            </Link>
-
-            <Link
-              href="/mou"
-              className={`
-                block py-2 pl-4
-                ${
-                  pathname === '/mou'
-                    ? 'font-semibold text-primary'
-                    : 'text-gray-700 hover:text-primary'
-                }
-              `}
-              onClick={closeMobileMenu}
-            >
-              MOU & Partnerships
-            </Link>
-
-            <Link
-              href="/analytics"
-              className={`
-                block py-2 pl-4
-                ${
-                  pathname === '/analytics'
-                    ? 'font-semibold text-primary'
-                    : 'text-gray-700 hover:text-primary'
-                }
-              `}
-              onClick={closeMobileMenu}
-            >
-              Analytics
-            </Link>
-
-            <Link
-              href="/calendars"
-              className={`
-                block py-2 pl-4
-                ${
-                  pathname === '/calendars'
-                    ? 'font-semibold text-primary'
-                    : 'text-gray-700 hover:text-primary'
-                }
-              `}
-              onClick={closeMobileMenu}
-            >
-              Calendars
-            </Link>
-
-            <Link
-              href="/work-in-progress"
-              target="_blank"
-              className={`
-                block py-2 pl-4
-                ${
-                  pathname === '/work-in-progress'
-                    ? 'font-semibold text-primary'
-                    : 'text-gray-700 hover:text-primary'
-                }
-              `}
-              onClick={closeMobileMenu}
-            >
-              📖 Magazine
-            </Link>
-
-          </div>
-
-          {/* FAQ */}
-
-          <Link
-            href="/faq"
-            className={`
-              mt-2 block border-t border-gray-100 py-2 pt-2 font-medium
-              ${
-                pathname === '/faq'
-                  ? 'font-semibold text-primary'
-                  : 'text-gray-700 hover:text-primary'
-              }
-            `}
-            onClick={closeMobileMenu}
-          >
-            FAQ
-          </Link>
-
-          {/* CONTACT */}
-
-          <Link
-            href="/contact"
-            className={`
-              block py-2 font-medium
-              ${
-                pathname === '/contact'
-                  ? 'font-semibold text-primary'
-                  : 'text-gray-700 hover:text-primary'
-              }
-            `}
-            onClick={closeMobileMenu}
-          >
-            Contact
-          </Link>
-
-          {/* STUDENT PORTAL */}
-
-          <div className="pb-2 pt-4">
-            <Link
-              href="https://www.rgpv.ac.in/Login/StudentLogin.aspx"
+              href={STUDENT_PORTAL}
               target="_blank"
               rel="noopener noreferrer"
               className="btn-primary block w-full text-center"
-              onClick={closeMobileMenu}
+              onClick={closeMobile}
             >
               Student Portal
             </Link>
           </div>
-
         </div>
       </div>
     </header>
